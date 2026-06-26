@@ -152,6 +152,37 @@ def to_uint8_with_colormap(da2d, vmin=None, vmax=None, cmap_name="viridis", noda
     return out, colormap, vmin, vmax
 
 
+def to_uint8_direct(da2d, cmap_name="viridis", nodata_value=0):
+    """Round a 2D float DataArray straight to uint8 - pixel value N literally
+    means N units (e.g. N m/s), no min/max rescaling. Only suitable for
+    variables that stay within ~1-255 in their native units (wind speed in
+    m/s, not temperature in degC). Values below 1 are clamped up to 1 since
+    0 is reserved for nodata - fine for wind maxima, which never reach 0.
+    The colour table is still stretched across the data's own min/max for
+    visual contrast, even though the pixel values themselves are untouched."""
+    import matplotlib.cm as cm
+
+    arr = np.asarray(da2d.values, dtype="float64")
+    valid = np.isfinite(arr)
+
+    scaled = np.clip(np.round(arr), 1, 255).astype(np.uint8)
+    scaled[~valid] = nodata_value
+
+    out = da2d.copy(data=scaled)
+    out = out.rio.write_nodata(nodata_value)
+
+    vmin = float(arr[valid].min())
+    vmax = float(arr[valid].max())
+
+    cmap = cm.get_cmap(cmap_name)
+    colormap = {0: (0, 0, 0, 0)}  # transparent nodata
+    for i in range(1, 256):
+        norm = 0.0 if vmax <= vmin else min(max((i - vmin) / (vmax - vmin), 0.0), 1.0)
+        r, g, b, a = cmap(norm)
+        colormap[i] = (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)), 255)
+    return out, colormap, vmin, vmax
+
+
 def load_landuse_mask(tif_path, reference_da, raw_threshold, resampling=None):
     """Resample a probability/coverage raster (e.g. an NLUM probSurf tif, on
     its own raw value scale) onto `reference_da`'s grid and threshold it.

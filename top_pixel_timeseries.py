@@ -66,7 +66,6 @@ def plot_anchor(series, anchor, variable, out_dir):
     cfg = VARIABLES[variable]
     fig, ax = plt.subplots(figsize=(12, 4))
     ax.plot(series.index, series.values, linewidth=0.8)
-    ax.axvline(pd.Timestamp(anchor["date"]), color="red", linestyle=":", linewidth=1.2)
     ax.set_xlabel("Date")
     ax.set_ylabel(f"{cfg['long_name']} ({cfg['units_out']})")
     ax.set_title(
