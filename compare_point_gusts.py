@@ -32,6 +32,13 @@ lodging thresholds from Pinera-Chavez et al. 2016, Table 2, p. 330 - 22 m/s
 behind any day whose highest series that day crosses one of them (red for
 stem, orange for root-only).
 
+A second panel underneath shows context for the same dates and point: daily
+BARRA-C2 rainfall (`pr`, bars) and 8-day OzWALD soil-profile moisture storage
+(`Ssoil`, line - /g/data/ub8/au/OzWALD/8day/Ssoil/, nearest pixel, native
+~500 m grid so not the same pixel as the ~4 km BARRA2 series above). Both are
+also added as columns in the CSV; soil moisture is NaN on days that aren't one
+of the 8-day sample dates.
+
 Example (the two paddock point-years near Wagga Wagga):
     python compare_point_gusts.py --lat -35.050418 --lon 147.318795 --year 2024
     python compare_point_gusts.py --lat -35.025873 --lon 147.354694 --year 2025
@@ -44,10 +51,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
+import xarray as xr
 
 from barra_common import VARIABLES, open_variable, prepare_spatial
 
 OUT_DIR = Path("/scratch/xe2/cb8590/wind-gusts2")
+OZWALD_SSOIL_ROOT = Path("/g/data/ub8/au/OzWALD/8day/Ssoil")
 
 # (logical variable, legend label, matplotlib line kwargs), ordered to match
 # the plot top-to-bottom by season peak: Pinera-Chavez gust ~= Corrected gust
@@ -83,9 +92,33 @@ def point_series(lat, lon, year, start_month, end_month):
         src = cfg.get("source", var)
         cols[label] = cfg["convert"](raw_by_source[src]).to_series()
     df = pd.DataFrame(cols)
-    df.index = pd.to_datetime(df.index)
-    # df.index.name = "date"
+    df.index = pd.to_datetime(df.index).normalize()
+    df.index.name = "date"
     return df, pixel_lat, pixel_lon
+
+
+def fetch_rainfall(lat, lon, year, start_month, end_month):
+    """Daily BARRA-C2 rainfall (mm/day) at the nearest pixel to (lat, lon)."""
+    da = prepare_spatial(open_variable("pr", year, start_month, year, end_month))
+    pt = da.sel(lat=lat, lon=lon, method="nearest").compute()
+    series = pt.to_series()
+    series.index = pd.to_datetime(series.index).normalize()
+    return series
+
+
+def fetch_soil_moisture(lat, lon, year, start_month, end_month):
+    """8-day OzWALD soil-profile moisture storage (mm, `Ssoil`) at the nearest
+    pixel to (lat, lon), restricted to the requested season. One file per
+    calendar year, so this only works within a single `year` (same constraint
+    point_series already has)."""
+    path = OZWALD_SSOIL_ROOT / f"OzWALD.Ssoil.{year}.nc"
+    da = xr.open_dataset(path)["Ssoil"]
+    pt = da.sel(longitude=lon, latitude=lat, method="nearest").compute()
+    series = pt.to_series()
+    series.index = pd.to_datetime(series.index).normalize()
+    season_start = pd.Timestamp(year, start_month, 1)
+    season_end = pd.Timestamp(year, end_month, 1) + pd.offsets.MonthEnd(0)
+    return series[(series.index >= season_start) & (series.index <= season_end)]
 
 
 def _shade_exceedance_days(ax, df, threshold, root_threshold):
@@ -110,22 +143,50 @@ def main(lat, lon, year, start_month, end_month, threshold, root_threshold, out_
     df, pixel_lat, pixel_lon = point_series(lat, lon, year, start_month, end_month)
     print(f"Requested ({lat}, {lon}) -> nearest grid cell ({pixel_lat:.4f}, {pixel_lon:.4f})")
 
+    wind_cols = [label for _, label, _ in SERIES]
+    rain = fetch_rainfall(lat, lon, year, start_month, end_month)
+    soil = fetch_soil_moisture(lat, lon, year, start_month, end_month)
+    df["Rainfall (mm/day)"] = rain.reindex(df.index)
+    df["Soil moisture (mm)"] = soil.reindex(df.index)
+
     tag = f"gust_compare_{year}_{pixel_lat:.4f}_{pixel_lon:.4f}"
 
     csv_path = out_dir / f"{tag}.csv"
     df.rename_axis("date").reset_index().assign(date=lambda d: d["date"].dt.date).to_csv(csv_path, index=False)
     print(f"Wrote {csv_path}")
 
-    fig, ax = plt.subplots(figsize=(12, 5))
-    _shade_exceedance_days(ax, df, threshold, root_threshold)
+    fig, (ax_wind, ax_rain) = plt.subplots(
+        2, 1, figsize=(12, 8), sharex=True, gridspec_kw=dict(height_ratios=[2, 1])
+    )
+
+    _shade_exceedance_days(ax_wind, df[wind_cols], threshold, root_threshold)
     for var, label, kw in SERIES:
-        ax.plot(df.index, df[label], marker="o", markersize=2.5, linewidth=1.2, label=label, **kw)
-    ax.axhline(threshold, color="red", linestyle=":", linewidth=1.5)
-    ax.axhline(root_threshold, color="darkorange", linestyle=":", linewidth=1.5)
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Wind speed / gust (m s-1)")
-    ax.set_title(f"Daily wind/gust estimates at ({pixel_lat:.4f}, {pixel_lon:.4f}), {year}")
-    ax.legend(fontsize=8)
+        ax_wind.plot(df.index, df[label], marker="o", markersize=2.5, linewidth=1.2, label=label, **kw)
+    ax_wind.axhline(threshold, color="red", linestyle=":", linewidth=1.5)
+    ax_wind.axhline(root_threshold, color="darkorange", linestyle=":", linewidth=1.5)
+    ax_wind.set_ylabel("Wind speed / gust (m s-1)")
+    ax_wind.set_title(f"Daily wind/gust estimates at ({pixel_lat:.4f}, {pixel_lon:.4f}), {year}")
+    ax_wind.legend(fontsize=8)
+    plt.setp(ax_wind.get_xticklabels(), visible=False)
+
+    ax_rain.bar(df.index, df["Rainfall (mm/day)"], width=0.8, color="tab:blue", label="Rainfall (BARRA-C2, mm/day)")
+    ax_rain.set_ylabel("Rainfall (mm/day)", color="tab:blue")
+    ax_rain.tick_params(axis="y", labelcolor="tab:blue")
+    ax_rain.set_xlabel("Date")
+
+    ax_soil = ax_rain.twinx()
+    soil_valid = df["Soil moisture (mm)"].dropna()
+    ax_soil.plot(
+        soil_valid.index, soil_valid.values, color="tab:brown", marker="o", markersize=4,
+        linewidth=1.5, label="Soil moisture (OzWALD 8-day, mm)",
+    )
+    ax_soil.set_ylabel("Soil moisture (mm)", color="tab:brown")
+    ax_soil.tick_params(axis="y", labelcolor="tab:brown")
+
+    lines1, labels1 = ax_rain.get_legend_handles_labels()
+    lines2, labels2 = ax_soil.get_legend_handles_labels()
+    ax_rain.legend(lines1 + lines2, labels1 + labels2, fontsize=8)
+
     fig.autofmt_xdate()
     fig.tight_layout()
 

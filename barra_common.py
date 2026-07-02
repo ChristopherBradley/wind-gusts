@@ -124,6 +124,12 @@ VARIABLES = {
         convert=lambda da: da,  # already m/s
         cmap="viridis",
     ),
+    "pr": dict(
+        long_name="Daily total rainfall",
+        units_out="mm",
+        convert=lambda da: da * 86400.0,  # kg m-2 s-1 (mean) -> mm/day
+        cmap="Blues",
+    ),
     "wsgsmax": dict(
         long_name="Daily max wind gust (bias- & height-adjusted to 2 m)",
         units_out="m s-1",
