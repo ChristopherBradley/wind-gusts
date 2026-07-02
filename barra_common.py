@@ -58,7 +58,7 @@ GUST_BIAS_FACTOR = 0.90
 #    lodging thresholds are gusts at the ~2 m "pertinent height for crop lodging"
 #    (Baker et al. 1998). We scale with the neutral-log wind profile over a wheat
 #    canopy, reusing the roughness parameters of Berry et al. (2003b) /
-#    Pinera-Chavez (2016): for a crop of height h = 1 m, displacement height
+#    Pinera-Chavez (2016, Eq. 7, p. 328): for a crop of height h = 1 m, displacement height
 #    d = 0.75 h and roughness length z0 = (h - d)/3 (= 1/12 m). The factor is
 #    ln((2 - d)/z0) / ln((10 - d)/z0) ~= 0.575. (Strictly this profile describes
 #    the mean wind - Pinera applied it to means before gustifying - so applying
@@ -81,15 +81,19 @@ GUST_ADJUSTMENT = GUST_BIAS_FACTOR * GUST_HEIGHT_FACTOR
 # hourly-MEAN wind (sfcWindmax) the way Pinera-Chavez (2016) had to, because
 # they lacked gust observations. This is NOT used for the main analysis (which
 # uses the model gust wsgsmax); it exists so the two gust estimates can be
-# plotted against each other. Their Eq. 6 (after Berry et al. 2003b) turns an
-# hourly-mean wind Um into a peak gust of duration tau:
+# plotted against each other. Their Eq. 6 (Pinera-Chavez et al. 2016, p. 328;
+# after Berry et al. 2003b) turns an hourly-mean wind Um into a peak gust of
+# duration tau:
 #     Ugust = Um * [1 + 0.42 * TI * ln(T_ref / tau)]
 # with turbulence intensity TI = sigma/Um = 0.5 (Finnigan 1979, wind over a
 # wheat crop), reference averaging period T_ref = 3600 s (1 h, matching the
 # hourly mean) and gust duration tau = 0.3 s. The bracket is a constant gust
-# factor (~2.97). We apply it to the mean already brought to 2 m crop height
-# (GUST_HEIGHT_FACTOR), so pinera_gust = sfcWindmax * GUST_HEIGHT_FACTOR *
-# PINERA_GUST_FACTOR (~1.71 overall). NB this assumes very high near-canopy
+# factor (~2.97). We gustify the mean at its native 10 m first - this is the
+# same measurement height as the model's own raw wsgsmax, so the two are
+# directly comparable at that intermediate stage - and only then bring the
+# result down to 2 m crop height with the same GUST_HEIGHT_FACTOR used for
+# the model gust above, so pinera_gust = sfcWindmax * PINERA_GUST_FACTOR *
+# GUST_HEIGHT_FACTOR (~1.71 overall). NB this assumes very high near-canopy
 # turbulence and so gives a much larger 2 m gust than log-lawing the model's
 # 10 m gust down to 2 m does - that divergence is the point of the comparison.
 PINERA_TURBULENCE_INTENSITY = 0.5
@@ -136,6 +140,13 @@ VARIABLES = {
         convert=lambda da: da,
         cmap="viridis",
     ),
+    "wsgsmax_bias": dict(
+        long_name="Daily max wind gust (bias-adjusted only, still at 10 m)",
+        units_out="m s-1",
+        source="wsgsmax",  # same file as wsgsmax, but no height adjustment
+        convert=lambda da: da * GUST_BIAS_FACTOR,
+        cmap="viridis",
+    ),
     "sfcWindmax_2m": dict(
         long_name="Daily max wind speed (mean, height-corrected to 2 m)",
         units_out="m s-1",
@@ -146,8 +157,8 @@ VARIABLES = {
     "pinera_gust": dict(
         long_name="Daily max gust (Pinera-Chavez conversion from mean wind, 2 m)",
         units_out="m s-1",
-        source="sfcWindmax",  # empirical mean->gust: mean -> 2 m -> gust factor
-        convert=lambda da: da * GUST_HEIGHT_FACTOR * PINERA_GUST_FACTOR,
+        source="sfcWindmax",  # empirical mean->gust: gust factor (10 m) -> 2 m
+        convert=lambda da: da * PINERA_GUST_FACTOR * GUST_HEIGHT_FACTOR,
         cmap="viridis",
     ),
     "uas": dict(

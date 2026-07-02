@@ -39,11 +39,14 @@ than with unadjusted wind. See `Papers/` for the two source PDFs.
 ### Comparing against the Pinera-Chavez empirical gust
 
 As a cross-check we can also do what Pinera-Chavez actually did - reconstruct a gust
-from the mean wind (`sfcWindmax`) instead of using the model gust. Their Eq. 6 (after
-Berry et al. 2003b) turns an hourly-mean wind into a peak 0.3 s gust with a constant
-gust factor `1 + 0.42*TI*ln(3600/tau) ~= 2.97` (turbulence intensity `TI = 0.5` for
-wind over a wheat crop). Applied to the mean already brought to 2 m, this gives
-`pinera_gust = sfcWindmax * 0.575 * 2.97 ~= sfcWindmax * 1.71`.
+from the mean wind (`sfcWindmax`) instead of using the model gust. Their Eq. 6
+(Pinera-Chavez et al. 2016, p. 328; after Berry et al. 2003b) turns an hourly-mean
+wind into a peak 0.3 s gust with a constant gust factor `1 + 0.42*TI*ln(3600/tau)
+~= 2.97` (turbulence intensity `TI = 0.5` for wind over a wheat crop). We apply that
+gust factor first, at the mean's native 10 m (the same height as the model's own raw
+gust, so the two are directly comparable there), then bring the result down to 2 m
+with the same height factor used for the model gust: `pinera_gust = sfcWindmax *
+2.97 * 0.575 ~= sfcWindmax * 1.71`.
 
 This is exposed as extra *derived* variables (see below) purely for comparison - the
 main pipeline still uses the model gust `wsgsmax`. The two 2 m gust estimates diverge a
@@ -105,14 +108,16 @@ no file of its own. Supported names:
 |------------------|------------------|------------|
 | `wsgsmax`        | wsgsmax          | **model gust, bias- & height-adjusted to 2 m** (the primary analysis quantity) |
 | `wsgsmax_raw`    | wsgsmax          | model gust, raw at 10 m (no adjustment) |
+| `wsgsmax_bias`   | wsgsmax          | model gust, bias-adjusted only (x0.90), still at 10 m (no height correction) |
 | `sfcWindmax`     | sfcWindmax       | daily-max hourly-*mean* wind at 10 m (raw) |
 | `sfcWindmax_2m`  | sfcWindmax       | that mean, height-corrected to 2 m |
 | `pinera_gust`    | sfcWindmax       | 2 m gust reconstructed from the mean via Pinera-Chavez Eq. 6 |
 | `tasmax`         | tasmax           | daily max temperature (K -> degC) |
 | `uas` / `vas`    | uas / vas        | daily mean eastward / northward wind (for direction) |
 
-The `wsgsmax_raw`, `sfcWindmax_2m` and `pinera_gust` entries exist only for the
-point comparison (`compare_point_gusts.py`); the pipeline proper uses `wsgsmax`.
+The `wsgsmax_raw`, `wsgsmax_bias`, `sfcWindmax_2m` and `pinera_gust` entries
+exist only for the point comparison (`compare_point_gusts.py`); the pipeline
+proper uses `wsgsmax`.
 
 ## Workflow
 
@@ -187,10 +192,11 @@ python extract_point_timeseries.py --variable tasmax --lat -36.456671 --lon 148.
 ```
 
 **Specific paddock point-years (run these two).** Two paddocks near Wagga Wagga,
-NSW - one for 2024, one for 2025. `compare_point_gusts.py` overlays all five
-wind/gust estimates (raw maximum, corrected maximum, raw gust, corrected gust,
-Pinera-Chavez gust) for the Aug-Nov season on one plot + CSV, with the 22 m/s
-line, so you can see how the model gust and the Pinera reconstruction compare:
+NSW - one for 2024, one for 2025. `compare_point_gusts.py` overlays four
+wind/gust estimates (Pinera-Chavez gust, corrected gust, raw maximum, corrected
+maximum) for the Aug-Nov season on one plot + CSV, with the 22 m/s stem- and
+18 m/s root-lodging lines, so you can see how the model gust and the Pinera
+reconstruction compare:
 
 ```
 # 2024 paddock (-35.050418, 147.318795)
