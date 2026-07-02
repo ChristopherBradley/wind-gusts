@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build an Australia-wide GeoTIFF of the maximum of a BARRA2 daily-max
 variable seen across the same month range repeated over multiple years -
-e.g. the windiest Sep-Nov day anywhere in 2017-2025's sfcWindmax.
+e.g. the windiest Aug-Nov day anywhere in 2017-2025's wsgsmax gust.
 
 Whole region, no land-use/zone masking (compare landuse_wind_year.py for
 the masked equivalent). Processes one year at a time and folds it into a
@@ -12,7 +12,7 @@ Saved as uint8 with an embedded GDAL colour table, same as
 make_monthly_max_geotiff.py.
 
 Example:
-    python make_seasonal_max_geotiff.py --variable sfcWindmax --start-year 2017 --end-year 2025 --start-month 9 --end-month 11
+    python make_seasonal_max_geotiff.py --variable wsgsmax --start-year 2017 --end-year 2025 --start-month 8 --end-month 11
 """
 import argparse
 import time
@@ -79,10 +79,10 @@ def make_seasonal_max_geotiff(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variable", default="sfcWindmax", choices=list(VARIABLES))
+    parser.add_argument("--variable", default="wsgsmax", choices=list(VARIABLES))
     parser.add_argument("--start-year", type=int, required=True)
     parser.add_argument("--end-year", type=int, required=True)
-    parser.add_argument("--start-month", type=int, default=9)
+    parser.add_argument("--start-month", type=int, default=8)
     parser.add_argument("--end-month", type=int, default=11)
     parser.add_argument("--vmin", type=float, default=None, help="Override the auto (data min) colour-scale minimum")
     parser.add_argument("--vmax", type=float, default=None, help="Override the auto (data max) colour-scale maximum")

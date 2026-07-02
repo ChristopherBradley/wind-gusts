@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """For each year, find the day (in the day-aggregated exceedance table) with
-the most pixels exceeding the wind threshold, take its representative
+the most pixels exceeding the gust threshold, take its representative
 coordinate (south/east corner - see combine_exceedances.py), then plot that
-single pixel's full continuous daily-max-wind-speed time series across the
-entire 2017-2025 period (all months, not just Sep-Nov).
+single pixel's full continuous daily-max-gust time series across the
+entire 2017-2025 period (all months, not just Aug-Nov).
 
 A year with zero exceedances has no candidate coordinate and is skipped.
 
@@ -39,7 +39,7 @@ def pick_anchors(by_day, start_year, end_year):
         if g.empty:
             print(f"{year}: no exceedances at all - skipping, no anchor coordinate exists")
             continue
-        top = g.sort_values(["n_pixels", "max_wind_speed"], ascending=False).iloc[0]
+        top = g.sort_values(["n_pixels", "max_gust"], ascending=False).iloc[0]
         anchors.append(dict(year=year, date=top["date"], lat=float(top["lat"]), lon=float(top["lon"]), n_pixels=int(top["n_pixels"])))
     return anchors
 
@@ -93,7 +93,7 @@ def main(by_day_csv, variable, start_year, end_year, out_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--by-day-csv", default=str(OUT_DIR / "wind_exceedances_2017-2025_by_day.csv"))
-    parser.add_argument("--variable", default="sfcWindmax", choices=list(VARIABLES))
+    parser.add_argument("--variable", default="wsgsmax", choices=list(VARIABLES))
     parser.add_argument("--start-year", type=int, default=2017)
     parser.add_argument("--end-year", type=int, default=2025)
     parser.add_argument("--out-dir", default=str(OUT_DIR))

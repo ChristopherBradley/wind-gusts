@@ -66,7 +66,7 @@ if __name__ == "__main__":
     parser.add_argument("--lat", type=float, required=True)
     parser.add_argument("--lon", type=float, required=True)
     parser.add_argument("--start-year", type=int, default=2022)
-    parser.add_argument("--start-month", type=int, default=9)
+    parser.add_argument("--start-month", type=int, default=8)
     parser.add_argument("--end-year", type=int, default=2022)
     parser.add_argument("--end-month", type=int, default=11)
     args = parser.parse_args()

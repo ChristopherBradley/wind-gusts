@@ -4,7 +4,7 @@ and one GeoPackage of point locations (EPSG:4326), then build a second,
 day-aggregated CSV: pixels exceeding the threshold on the same date are
 collapsed into a single row, using the south-most latitude and east-most
 longitude seen that day as the representative coordinate, the day's single
-highest wind speed (and that observation's direction/region) as the
+highest gust (and that observation's direction/region) as the
 representative attributes, and a count of how many pixels were aggregated.
 
 Example:
@@ -35,14 +35,14 @@ def to_gpkg(df, out_path):
 def aggregate_by_day(df):
     rows = []
     for date, group in df.groupby("date", sort=True):
-        top = group.loc[group["max_wind_speed"].idxmax()]
+        top = group.loc[group["max_gust"].idxmax()]
         rows.append(
             {
                 "date": date,
                 "year": top["year"],
                 "lat": group["lat"].min(),  # south-most
                 "lon": group["lon"].max(),  # east-most
-                "max_wind_speed": top["max_wind_speed"],
+                "max_gust": top["max_gust"],
                 "wind_direction_deg": top["wind_direction_deg"],
                 "wind_direction_compass": top["wind_direction_compass"],
                 "cropping_region": top["cropping_region"],

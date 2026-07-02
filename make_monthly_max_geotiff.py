@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build an Australia-wide GeoTIFF of the maximum of a BARRA2 daily-max
 variable over a month (or a longer year/month range) - e.g. the hottest
-day's tasmax during September, or the windiest day's sfcWindmax across an
+day's tasmax during September, or the windiest day's wsgsmax gust across an
 entire season.
 
 Saved as uint8 with an embedded GDAL colour table so it auto-colours in
@@ -9,7 +9,7 @@ QGIS. The colour scale defaults to the actual min/max of the output data.
 
 Example:
     python make_monthly_max_geotiff.py --variable tasmax --year 2022 --month 9
-    python make_monthly_max_geotiff.py --variable sfcWindmax --year 2022 --month 9 --end-month 11
+    python make_monthly_max_geotiff.py --variable wsgsmax --year 2022 --month 8 --end-month 11
 """
 import argparse
 from pathlib import Path

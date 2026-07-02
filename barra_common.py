@@ -41,8 +41,72 @@ FILENAME_TEMPLATE = "{variable}_AUST-04_ERA5_historical_hres_BOM_BARRA-C2_v1_day
 # so we use the standard, universally-recognised CRS for all GIS output.
 BARRA_CRS = CRS.from_epsg(4326)
 
+# --- Wind-gust adjustment (applied to wsgsmax) -----------------------------
+# wsgsmax is BARRA-C2's modelled wind gust (standard_name wind_speed_of_gust):
+# the daily max of the 3-s peak gust at 10 m. It is the right variable for a
+# damaging-gust analysis - sfcWindmax is only the daily max of the *hourly-mean*
+# wind, which is what Pinera-Chavez (2016) had to gustify by hand. We do NOT
+# redo their empirical mean->gust conversion; instead we take the model gust and
+# apply two corrections so it is comparable to their 22 m/s lodging threshold:
+#
+# 1. Bias correction. Bush et al. (2025) / BoM (2025) report a known positive
+#    bias in the BARRA2 gust diagnostic from a mis-set constant in the gust
+#    parameterisation; the corrected constant reduces the simulated gust by ~10%.
+GUST_BIAS_FACTOR = 0.90
+#
+# 2. Height correction 10 m -> 2 m. wsgsmax is a 10 m gust; the Pinera-Chavez
+#    lodging thresholds are gusts at the ~2 m "pertinent height for crop lodging"
+#    (Baker et al. 1998). We scale with the neutral-log wind profile over a wheat
+#    canopy, reusing the roughness parameters of Berry et al. (2003b) /
+#    Pinera-Chavez (2016): for a crop of height h = 1 m, displacement height
+#    d = 0.75 h and roughness length z0 = (h - d)/3 (= 1/12 m). The factor is
+#    ln((2 - d)/z0) / ln((10 - d)/z0) ~= 0.575. (Strictly this profile describes
+#    the mean wind - Pinera applied it to means before gustifying - so applying
+#    it to the model gust is an approximation; set the height constants equal to
+#    disable.) Set either factor to 1.0 to turn a correction off.
+_CROP_HEIGHT_M = 1.0
+_DISPLACEMENT_M = 0.75 * _CROP_HEIGHT_M
+_ROUGHNESS_M = (_CROP_HEIGHT_M - _DISPLACEMENT_M) / 3.0
+_GUST_REF_HEIGHT_M = 10.0  # wsgsmax native measurement height
+_CROP_WIND_HEIGHT_M = 2.0  # pertinent height for crop lodging
+GUST_HEIGHT_FACTOR = float(
+    np.log((_CROP_WIND_HEIGHT_M - _DISPLACEMENT_M) / _ROUGHNESS_M)
+    / np.log((_GUST_REF_HEIGHT_M - _DISPLACEMENT_M) / _ROUGHNESS_M)
+)
+# Combined multiplier applied to raw wsgsmax (~0.518).
+GUST_ADJUSTMENT = GUST_BIAS_FACTOR * GUST_HEIGHT_FACTOR
+
+# --- Pinera-Chavez (2016) empirical mean->gust conversion (for comparison) --
+# An ALTERNATIVE to the model gust: reconstruct a gust from the daily-max
+# hourly-MEAN wind (sfcWindmax) the way Pinera-Chavez (2016) had to, because
+# they lacked gust observations. This is NOT used for the main analysis (which
+# uses the model gust wsgsmax); it exists so the two gust estimates can be
+# plotted against each other. Their Eq. 6 (after Berry et al. 2003b) turns an
+# hourly-mean wind Um into a peak gust of duration tau:
+#     Ugust = Um * [1 + 0.42 * TI * ln(T_ref / tau)]
+# with turbulence intensity TI = sigma/Um = 0.5 (Finnigan 1979, wind over a
+# wheat crop), reference averaging period T_ref = 3600 s (1 h, matching the
+# hourly mean) and gust duration tau = 0.3 s. The bracket is a constant gust
+# factor (~2.97). We apply it to the mean already brought to 2 m crop height
+# (GUST_HEIGHT_FACTOR), so pinera_gust = sfcWindmax * GUST_HEIGHT_FACTOR *
+# PINERA_GUST_FACTOR (~1.71 overall). NB this assumes very high near-canopy
+# turbulence and so gives a much larger 2 m gust than log-lawing the model's
+# 10 m gust down to 2 m does - that divergence is the point of the comparison.
+PINERA_TURBULENCE_INTENSITY = 0.5
+PINERA_AVERAGING_PERIOD_S = 3600.0
+PINERA_GUST_DURATION_S = 0.3
+PINERA_GUST_FACTOR = float(
+    1.0 + 0.42 * PINERA_TURBULENCE_INTENSITY * np.log(PINERA_AVERAGING_PERIOD_S / PINERA_GUST_DURATION_S)
+)
+
+
 # Per-variable settings needed to turn raw model output into a sensible,
 # colourised uint8 GeoTIFF. Add a new entry here to support a new variable.
+# Keys are *logical* names selected via --variable. Most map 1:1 to an on-disk
+# BARRA variable; a few are DERIVED - they set 'source' to the on-disk variable
+# to read and use 'convert' to transform it (see open_variable). The
+# sfcWindmax/wsgsmax family below exists so the mean wind, the model gust, and
+# the Pinera-Chavez empirical gust can all be compared (see compare_point_gusts.py).
 VARIABLES = {
     "tasmax": dict(
         long_name="Daily max temperature",
@@ -54,6 +118,36 @@ VARIABLES = {
         long_name="Daily max wind speed",
         units_out="m s-1",
         convert=lambda da: da,  # already m/s
+        cmap="viridis",
+    ),
+    "wsgsmax": dict(
+        long_name="Daily max wind gust (bias- & height-adjusted to 2 m)",
+        units_out="m s-1",
+        # Raw model gust (m/s) scaled by the ~10% bias correction and the
+        # 10 m -> 2 m crop-height factor documented above.
+        convert=lambda da: da * GUST_ADJUSTMENT,
+        cmap="viridis",
+    ),
+    # --- Comparison-only derived variables (not used by the main pipeline) ---
+    "wsgsmax_raw": dict(
+        long_name="Daily max wind gust (raw model, 10 m)",
+        units_out="m s-1",
+        source="wsgsmax",  # same file as wsgsmax, but no bias/height adjustment
+        convert=lambda da: da,
+        cmap="viridis",
+    ),
+    "sfcWindmax_2m": dict(
+        long_name="Daily max wind speed (mean, height-corrected to 2 m)",
+        units_out="m s-1",
+        source="sfcWindmax",
+        convert=lambda da: da * GUST_HEIGHT_FACTOR,
+        cmap="viridis",
+    ),
+    "pinera_gust": dict(
+        long_name="Daily max gust (Pinera-Chavez conversion from mean wind, 2 m)",
+        units_out="m s-1",
+        source="sfcWindmax",  # empirical mean->gust: mean -> 2 m -> gust factor
+        convert=lambda da: da * GUST_HEIGHT_FACTOR * PINERA_GUST_FACTOR,
         cmap="viridis",
     ),
     "uas": dict(
@@ -102,11 +196,17 @@ def open_variable(variable, start_year, start_month, end_year=None, end_month=No
     VARIABLES[variable]['convert']. Loads eagerly (chunks=None) by default -
     this node has a single CPU, so dask's 'auto' chunking just adds overhead
     and was observed to destabilise memory use; pass chunks="auto" to opt
-    back into a dask-backed lazy array if needed."""
-    files = find_files(variable, start_year, start_month, end_year, end_month)
-    ds = xr.open_mfdataset(files, combine="by_coords", chunks=chunks)
-    da = ds[variable]
+    back into a dask-backed lazy array if needed.
+
+    `variable` is a *logical* name (a key in VARIABLES), which may be a derived
+    quantity: if its entry sets 'source', that on-disk BARRA variable is read
+    instead and 'convert' turns it into the derived quantity (e.g. pinera_gust
+    reads sfcWindmax then applies the empirical mean->gust factor)."""
     cfg = VARIABLES[variable]
+    source = cfg.get("source", variable)  # on-disk BARRA variable to read
+    files = find_files(source, start_year, start_month, end_year, end_month)
+    ds = xr.open_mfdataset(files, combine="by_coords", chunks=chunks)
+    da = ds[source]
     da = cfg["convert"](da)
     da.attrs["units"] = cfg["units_out"]
     da.attrs["long_name"] = cfg["long_name"]

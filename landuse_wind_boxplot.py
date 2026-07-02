@@ -4,7 +4,7 @@ into a single box plot (one box per year, outliers included), with a
 horizontal reference line at a given threshold.
 
 Example:
-    python landuse_wind_boxplot.py --variable sfcWindmax --start-year 2017 --end-year 2025 --line 22
+    python landuse_wind_boxplot.py --variable wsgsmax --start-year 2017 --end-year 2025 --line 22
 """
 import argparse
 from pathlib import Path
@@ -36,7 +36,7 @@ def main(variable, start_year, end_year, line_value, out_dir):
     ax.boxplot([yearly_values[y] for y in years], tick_labels=[str(y) for y in years], showfliers=True)
     ax.axhline(line_value, color="red", linestyle=":", linewidth=1.5, label=f"{line_value:g} {cfg['units_out']}")
     ax.set_xlabel("Year")
-    ax.set_ylabel(f"Sep-Nov max {cfg['long_name'].lower()} ({cfg['units_out']})")
+    ax.set_ylabel(f"Aug-Nov max {cfg['long_name'].lower()} ({cfg['units_out']})")
     ax.set_title(f"Max {cfg['long_name'].lower()} per pixel in winter cereal cropping pixels (n={n_pixels_label})")
     ax.legend()
     fig.tight_layout()
@@ -53,7 +53,7 @@ def main(variable, start_year, end_year, line_value, out_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variable", default="sfcWindmax", choices=list(VARIABLES))
+    parser.add_argument("--variable", default="wsgsmax", choices=list(VARIABLES))
     parser.add_argument("--start-year", type=int, default=2017)
     parser.add_argument("--end-year", type=int, default=2025)
     parser.add_argument("--line", type=float, default=22.0, help="Reference horizontal line value on the box plot")

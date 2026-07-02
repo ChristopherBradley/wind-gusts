@@ -9,7 +9,7 @@ process on this node gets a hard 1800 CPU-second budget on a single CPU -
 one year at a time comfortably fits, a 9-year loop in one process did not.
 
 Example:
-    python landuse_wind_year.py --variable sfcWindmax --year 2022 --start-month 9 --end-month 11
+    python landuse_wind_year.py --variable wsgsmax --year 2022 --start-month 8 --end-month 11
 """
 import argparse
 import time
@@ -65,9 +65,9 @@ def main(variable, year, start_month, end_month, mask_path, out_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variable", default="sfcWindmax", choices=list(VARIABLES))
+    parser.add_argument("--variable", default="wsgsmax", choices=list(VARIABLES))
     parser.add_argument("--year", type=int, required=True)
-    parser.add_argument("--start-month", type=int, default=9)
+    parser.add_argument("--start-month", type=int, default=8)
     parser.add_argument("--end-month", type=int, default=11)
     parser.add_argument("--mask-path", default=str(MASK_PATH))
     parser.add_argument("--out-dir", default=str(OUT_DIR))
