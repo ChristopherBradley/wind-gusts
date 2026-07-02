@@ -32,12 +32,8 @@ lodging thresholds from Pinera-Chavez et al. 2016, Table 2, p. 330 - 22 m/s
 behind any day whose highest series that day crosses one of them (red for
 stem, orange for root-only).
 
-A second panel underneath shows context for the same dates and point: daily
-BARRA-C2 rainfall (`pr`, bars) and 8-day OzWALD soil-profile moisture storage
-(`Ssoil`, line - /g/data/ub8/au/OzWALD/8day/Ssoil/, nearest pixel, native
-~500 m grid so not the same pixel as the ~4 km BARRA2 series above). Both are
-also added as columns in the CSV; soil moisture is NaN on days that aren't one
-of the 8-day sample dates.
+A second panel underneath shows daily BARRA-C2 rainfall (`pr`, bars) for the
+same dates and point, also added as a column in the CSV.
 
 Example (the two paddock point-years near Wagga Wagga):
     python compare_point_gusts.py --lat -35.050418 --lon 147.318795 --year 2024
@@ -51,12 +47,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
-import xarray as xr
 
 from barra_common import VARIABLES, open_variable, prepare_spatial
 
 OUT_DIR = Path("/scratch/xe2/cb8590/wind-gusts2")
-OZWALD_SSOIL_ROOT = Path("/g/data/ub8/au/OzWALD/8day/Ssoil")
 
 # (logical variable, legend label, matplotlib line kwargs), ordered to match
 # the plot top-to-bottom by season peak: Pinera-Chavez gust ~= Corrected gust
@@ -93,7 +87,6 @@ def point_series(lat, lon, year, start_month, end_month):
         cols[label] = cfg["convert"](raw_by_source[src]).to_series()
     df = pd.DataFrame(cols)
     df.index = pd.to_datetime(df.index).normalize()
-    df.index.name = "date"
     return df, pixel_lat, pixel_lon
 
 
@@ -104,21 +97,6 @@ def fetch_rainfall(lat, lon, year, start_month, end_month):
     series = pt.to_series()
     series.index = pd.to_datetime(series.index).normalize()
     return series
-
-
-def fetch_soil_moisture(lat, lon, year, start_month, end_month):
-    """8-day OzWALD soil-profile moisture storage (mm, `Ssoil`) at the nearest
-    pixel to (lat, lon), restricted to the requested season. One file per
-    calendar year, so this only works within a single `year` (same constraint
-    point_series already has)."""
-    path = OZWALD_SSOIL_ROOT / f"OzWALD.Ssoil.{year}.nc"
-    da = xr.open_dataset(path)["Ssoil"]
-    pt = da.sel(longitude=lon, latitude=lat, method="nearest").compute()
-    series = pt.to_series()
-    series.index = pd.to_datetime(series.index).normalize()
-    season_start = pd.Timestamp(year, start_month, 1)
-    season_end = pd.Timestamp(year, end_month, 1) + pd.offsets.MonthEnd(0)
-    return series[(series.index >= season_start) & (series.index <= season_end)]
 
 
 def _shade_exceedance_days(ax, df, threshold, root_threshold):
@@ -145,9 +123,7 @@ def main(lat, lon, year, start_month, end_month, threshold, root_threshold, out_
 
     wind_cols = [label for _, label, _ in SERIES]
     rain = fetch_rainfall(lat, lon, year, start_month, end_month)
-    soil = fetch_soil_moisture(lat, lon, year, start_month, end_month)
     df["Rainfall (mm/day)"] = rain.reindex(df.index)
-    df["Soil moisture (mm)"] = soil.reindex(df.index)
 
     tag = f"gust_compare_{year}_{pixel_lat:.4f}_{pixel_lon:.4f}"
 
@@ -170,22 +146,7 @@ def main(lat, lon, year, start_month, end_month, threshold, root_threshold, out_
     plt.setp(ax_wind.get_xticklabels(), visible=False)
 
     ax_rain.bar(df.index, df["Rainfall (mm/day)"], width=0.8, color="tab:blue", label="Rainfall (BARRA-C2, mm/day)")
-    ax_rain.set_ylabel("Rainfall (mm/day)", color="tab:blue")
-    ax_rain.tick_params(axis="y", labelcolor="tab:blue")
-    ax_rain.set_xlabel("Date")
-
-    ax_soil = ax_rain.twinx()
-    soil_valid = df["Soil moisture (mm)"].dropna()
-    ax_soil.plot(
-        soil_valid.index, soil_valid.values, color="tab:brown", marker="o", markersize=4,
-        linewidth=1.5, label="Soil moisture (OzWALD 8-day, mm)",
-    )
-    ax_soil.set_ylabel("Soil moisture (mm)", color="tab:brown")
-    ax_soil.tick_params(axis="y", labelcolor="tab:brown")
-
-    lines1, labels1 = ax_rain.get_legend_handles_labels()
-    lines2, labels2 = ax_soil.get_legend_handles_labels()
-    ax_rain.legend(lines1 + lines2, labels1 + labels2, fontsize=8)
+    ax_rain.set_ylabel("Rainfall (mm/day)")
 
     fig.autofmt_xdate()
     fig.tight_layout()
