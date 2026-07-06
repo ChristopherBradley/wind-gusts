@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -N zone_gust_history
+#PBS -l mem=16GB
+#PBS -l ncpus=1
+#PBS -l jobfs=1GB
+#PBS -P xe2
+#PBS -l walltime=02:00:00
+#PBS -l storage=gdata/xe2+gdata/ob53+scratch/xe2
+#PBS -q normal
+#PBS -l wd
+#PBS -j oe
+
+source /g/data/xe2/cb8590/miniconda/etc/profile.d/conda.sh
+conda activate /g/data/xe2/cb8590/miniconda/envs/shelterbelts
+
+cd /home/147/cb8590/Projects/wind-gusts2
+
+VARIABLE="${VARIABLE:-wsgsmax_bias}"
+OUT=/scratch/xe2/cb8590/wind-gusts2
+
+# 1. Full-history daily 5-figure summary per GRDC cropping zone.
+python extract_zone_gust_history.py --variable "$VARIABLE" --out-dir "$OUT" \
+    > "$OUT/zone_gust_history_full_${VARIABLE}.log" 2>&1
+
+# 2. Seasonal-max GeoTIFF over the whole domain: wsgsmax * 0.9, Aug-Nov,
+#    last 5 years (2021-2025). Pixel value = wind speed in m/s (--direct-units),
+#    matching the original sfcWindmax_seasonal_max tif.
+python make_seasonal_max_geotiff.py --variable wsgsmax_bias \
+    --start-year 2021 --end-year 2025 --start-month 8 --end-month 11 --direct-units \
+    >> "$OUT/zone_gust_history_full_${VARIABLE}.log" 2>&1

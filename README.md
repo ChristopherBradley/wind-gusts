@@ -273,6 +273,58 @@ bias-only gust and the 2 m Pinera-Chavez reconstruction (`pinera_gust`) land
 close together, not the model's own 2 m gust - the height correction dominates
 the difference between the two tables here.
 
+### 7. Per-GRDC-zone gust history, exceedance probabilities and return levels
+
+The step-6 analysis at the two paddock points, generalised to all 18 GRDC
+cropping zones in `grdc_cropping_zones.gpkg`. `extract_zone_gust_history.py`
+walks the full BARRA-C2 history one month at a time and, for every day and
+every zone, summarises all pixels whose centre falls in that zone's polygon
+with four statistics - median, upper quartile (p75), p90 and maximum. It reads
+the whole Australia grid (not a handful of points), so it is much heavier than
+step 6 and is meant for the PBS job:
+
+```
+qsub extract_zone_gust_history.pbs   # VARIABLE defaults to wsgsmax_bias
+```
+
+This writes two CSVs: `gust_zone_summary_<tag>.csv` (date + 72 columns, the
+four stats grouped per zone as `<zone>_median`/`_p75`/`_p90`/`_max`) and the
+convenience subset `gust_zone_medians_<tag>.csv` (date + one median column per
+zone). The same PBS job then also regenerates the seasonal-max GeoTIFF over the
+whole domain for `wsgsmax_bias` (= `wsgsmax * 0.9`), Aug-Nov, last five seasons
+(2021-2025), `--direct-units` so pixel values are wind speed in m/s -
+`wsgsmax_bias_seasonal_max_2021-2025_m08-11.tif` (rerun `make_seasonal_max_geotiff.py`
+with an earlier `--start-year` for a 10/15/20/25-year window).
+
+Both analyses below only read those CSVs - no BARRA2 access - so they are fast
+and safe to re-run/tweak:
+
+```
+python plot_zone_gust_probabilities.py --stat median --xmin 10 --xmax 30 \
+    --csv /scratch/xe2/cb8590/wind-gusts2/gust_zone_summary_wsgsmax_bias_197901-202601.csv
+python plot_zone_gust_probabilities.py --stat max \
+    --csv /scratch/xe2/cb8590/wind-gusts2/gust_zone_summary_wsgsmax_bias_197901-202601.csv
+python zone_gust_25yr_return_level.py --stat median \
+    --csv /scratch/xe2/cb8590/wind-gusts2/gust_zone_summary_wsgsmax_bias_197901-202601.csv
+```
+
+`plot_zone_gust_probabilities.py` builds, per zone, the empirical *annual
+probability* that the Aug-Nov seasonal-maximum gust equals or exceeds a range
+of speeds (the fraction of years in the record whose seasonal max is >= each
+speed - no distribution fitted; runs from 1.0 at low speeds to 0.0 at high),
+in the style of `Papers/Wind gust probabilities.png`. `--stat` picks which
+daily zone statistic to build the curve from (`median`, the typical gust
+across a zone, or `max`, the windiest pixel each day); `--xmin`/`--xmax`
+truncate the speed axis. It writes a threshold x zone table CSV, one figure per
+zone, and a combined 6x3 panel (every panel independently labelled).
+
+`zone_gust_25yr_return_level.py` reads off, per zone, the gust speed with an
+annual exceedance probability of 0.04 - the empirical 1-in-25-year gust, i.e.
+where each curve crosses annual probability 0.04 (the 0.96 quantile of that
+zone's annual maxima). It writes a table CSV and, unless `--no-gpkg`, adds the
+values back onto `grdc_cropping_zones.gpkg` as a real-valued attribute
+(default column `gust25yr_median_ms`, keyed by `AEZ`).
+
 ## Outputs
 
 All scripts write to `/scratch/xe2/cb8590/wind-gusts2` by default
