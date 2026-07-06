@@ -217,6 +217,62 @@ day-aggregated CSV produced in step 2):
 python top_pixel_timeseries.py --by-day-csv wind_exceedances_2017-2025_by_day.csv
 ```
 
+### 6. Full-history climatology and return-period table at the two paddock points
+
+Daily gust at the two paddock points, over every month of BARRA-C2 available
+on disk (currently 1979-01 to 2026-01), for either `wsgsmax_bias` ("Corrected
+gust" = `wsgsmax * 0.9`, still at 10 m) or `wsgsmax` (bias- AND
+height-adjusted to 2 m, the main pipeline's gust). This reads ~565 monthly
+files and takes a few minutes even processing one calendar year at a time,
+so it runs as a PBS job (`extract_gust_history.pbs`, ~0.6 SU per variable):
+
+```
+qsub -v VARIABLE=wsgsmax_bias extract_gust_history.pbs   # 10 m, bias-only ("Corrected gust")
+qsub -v VARIABLE=wsgsmax      extract_gust_history.pbs   # 2 m, bias- and height-adjusted (main pipeline gust)
+```
+
+Each writes one long-format CSV (`gust_history_<variable>_<start>-<end>.csv`,
+one row per point/day) - the single source of truth for the two analyses
+below, which only read this CSV and never touch the BARRA2 files again:
+
+```
+python plot_gust_climatology.py --csv /scratch/xe2/cb8590/wind-gusts2/gust_history_wsgsmax_bias_197901-202601.csv
+python gust_return_period_table.py --csv /scratch/xe2/cb8590/wind-gusts2/gust_history_wsgsmax_bias_197901-202601.csv
+```
+
+`plot_gust_climatology.py` writes a monthly-max CSV/plot (every month, full
+year) and a seasonal-max CSV/plot: one value per year, the max within
+`--start-month`/`--end-month` (default Aug-Nov, the growing-season
+stem-lodging window used elsewhere in this project - not the full calendar
+year). `gust_return_period_table.py` fits a Gumbel distribution to each
+point's Aug-Nov seasonal maxima (same `--start-month`/`--end-month` window,
+not the full calendar year - a year's overall worst gust often comes from
+outside the growing season, so this matters: at these points it moves the
+Gumbel location down by ~1.5-1.7 m/s vs. a full-year fit) and writes, in the
+style of Pinera-Chavez et al. (2016) Table 2: T-year return-level gust speeds
+for T in {5,10,15,20,25} years, rounded to 1 dp, and the probability of a
+gust of at least {22,23,24,25,26,27} m/s occurring within each of those
+windows (values rounded to 1 dp; the default thresholds were moved up from
+18-22 to 22-27 m/s for `wsgsmax_bias`, since 18-22 m/s all round to ~100%
+there - see below). `plot_gust_return_period_heatmap.py` turns the
+exceedance-probability CSV into a two-panel heatmap (one panel per site,
+shared red<->blue diverging colour scale - red high/bad, blue low/good):
+
+```
+python plot_gust_return_period_heatmap.py --csv /scratch/xe2/cb8590/wind-gusts2/gust_exceedance_probabilities_wsgsmax_bias_197901-202601_m08-11.csv
+```
+
+The two gust variables tell very different stories at these points:
+`wsgsmax_bias` (10 m) Aug-Nov return levels run ~23-27 m/s, mostly above the
+22-27 m/s threshold range, so its exceedance-probability table/heatmap is
+red-heavy (high probability). `wsgsmax` (2 m) return levels run only ~13-16
+m/s, well below that range - its exceedance probabilities would all be near
+0% at these thresholds (still using the original 18-22 m/s default if
+re-run). This matches what `compare_point_gusts.py` already showed: the 10 m
+bias-only gust and the 2 m Pinera-Chavez reconstruction (`pinera_gust`) land
+close together, not the model's own 2 m gust - the height correction dominates
+the difference between the two tables here.
+
 ## Outputs
 
 All scripts write to `/scratch/xe2/cb8590/wind-gusts2` by default

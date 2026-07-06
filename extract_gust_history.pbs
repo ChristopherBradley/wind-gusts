@@ -1,0 +1,20 @@
+#!/bin/bash
+#PBS -N gust_history_full
+#PBS -l mem=16GB
+#PBS -l ncpus=1
+#PBS -l jobfs=1GB
+#PBS -P xe2
+#PBS -l walltime=01:00:00
+#PBS -l storage=gdata/xe2+gdata/ob53+scratch/xe2
+#PBS -q normal
+#PBS -l wd
+#PBS -j oe
+
+source /g/data/xe2/cb8590/miniconda/etc/profile.d/conda.sh
+conda activate /g/data/xe2/cb8590/miniconda/envs/shelterbelts
+
+cd /home/147/cb8590/Projects/wind-gusts2
+
+VARIABLE="${VARIABLE:-wsgsmax_bias}"
+python extract_gust_history.py --variable "$VARIABLE" --out-dir /scratch/xe2/cb8590/wind-gusts2 \
+    > "/scratch/xe2/cb8590/wind-gusts2/gust_history_full_${VARIABLE}.log" 2>&1

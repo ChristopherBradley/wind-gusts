@@ -208,6 +208,18 @@ def find_files(variable, start_year, start_month, end_year=None, end_month=None)
     return files
 
 
+def available_month_range(variable):
+    """Return (start_year, start_month, end_year, end_month) spanning every
+    monthly file present on disk for `variable`, by scanning filenames
+    rather than hardcoding a range that will go stale as new months land."""
+    var_dir = BARRA_DAY_ROOT / variable / "latest"
+    yms = sorted(p.stem.rsplit("_", 1)[-1].split("-")[0] for p in var_dir.glob(f"{variable}_*.nc"))
+    if not yms:
+        raise FileNotFoundError(f"No files found for variable {variable!r} in {var_dir}")
+    first, last = yms[0], yms[-1]
+    return int(first[:4]), int(first[4:6]), int(last[:4]), int(last[4:6])
+
+
 def open_variable(variable, start_year, start_month, end_year=None, end_month=None, chunks=None):
     """Open `variable` across the given month range, with units converted per
     VARIABLES[variable]['convert']. Loads eagerly (chunks=None) by default -
