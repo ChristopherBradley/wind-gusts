@@ -325,6 +325,109 @@ zone's annual maxima). It writes a table CSV and, unless `--no-gpkg`, adds the
 values back onto `grdc_cropping_zones.gpkg` as a real-valued attribute
 (default column `gust25yr_median_ms`, keyed by `AEZ`).
 
+### 8. Daily rainfall history (reuses steps 5-7)
+
+The point (step 6) and zone (step 7) extractors are variable-agnostic, so daily
+rainfall (`pr`, converted to mm/day) is just a matter of pointing them at the
+`pr` variable with rainfall-appropriate output names. Both are full-history
+whole-grid reads, so they run together as one PBS job:
+
+```
+qsub extract_rainfall_history.pbs
+```
+
+That runs `extract_zone_gust_history.py --variable pr --out-prefix rain_zone`
+(per-GRDC-zone `rain_zone_summary_pr_<tag>.csv` and the median-per-zone
+`rain_zone_medians_pr_<tag>.csv` - the median daily rainfall time series across
+each cropping region) and `extract_gust_history.py --variable pr --out-prefix
+rain_history --value-col rainfall_mm` (daily rainfall at the two Wagga paddock
+points, `rain_history_pr_<tag>.csv`). Both extractors take `--out-prefix` (and
+the point one `--value-col`) so their output names/columns are not hard-wired
+to "gust", and default their year range to the full record on disk for the
+selected variable rather than assuming wsgsmax's.
+
+### 9. All-zones-on-one-axis gust summaries
+
+`plot_combined_gust_probabilities.py` collapses the step-7 per-zone grid onto
+two single-axis figures, in the style of Papers/"min & max annual gust
+probabilities.png":
+
+```
+python plot_combined_gust_probabilities.py \
+    --zone-csv /scratch/xe2/cb8590/wind-gusts2/gust_zone_summary_wsgsmax_bias_197901-202601.csv \
+    --point-csv /scratch/xe2/cb8590/wind-gusts2/gust_history_wsgsmax_bias_197901-202601.csv
+```
+
+(a) `gust_combined_annual_prob_<name>_<tag>_m08-12.png` - every GRDC zone's
+annual exceedance-probability curve for the **Aug-Dec (153-day)** seasonal
+maximum on one axis; (b) `gust_combined_monthly_max_<name>_<tag>.png` - the
+average monthly-maximum gust over the full calendar year, Aug-Dec shaded.
+
+Each zone is its own named line, coloured by the state it mostly sits in with a
+different shade per zone: QLD purples, NSW greens, SA oranges, WA blues. State
+membership is by the state named first in the GRDC label (its majority state),
+so the two Qld/NSW border zones ("NSW NE/Qld SE", "NSW NW/Qld SW") count as NSW.
+The two single-zone states get fixed stand-alone colours so they don't clash:
+Tas Grain bright red, Vic High Rainfall magenta. The two-Wagga-points average is
+a bold gold line. WA Ord and WA Mallee are excluded (no wheat). `--stat` picks
+the per-zone daily statistic (default `mean` - easy to explain and, here, nearly
+identical to the median).
+
+The monthly plot smooths each line with a wrap-around moving average
+(`--smooth-window`, default 3 months; 1 = off) and shades a 95% confidence
+interval of each month's mean (`--no-ci` to drop it); the annual plot's
+gust-speed axis is set with `--xmin`/`--xmax` (e.g. 10-30). Two `--mode`s:
+
+* `zone` (default): just the zone lines and Wagga.
+* `envelope`: also draws the whole-domain bounds as bold black lines - a solid
+  "Maximum - Australia" (the windiest cropping pixel anywhere each day) and a
+  dashed "Minimum - Australia" (the calmest pixel anywhere) - so every zone line
+  and the Wagga point fall between them, as in the reference. Needs the
+  `_min`/`_max` columns (extract_zone_gust_history.py's default `--stats`).
+
+Note the `zone` mode cannot make a fixed point like Wagga sit between the
+extreme zones with a single aggregation: under the zone median/mean the zone
+lines are spatially damped and Wagga (an undamped single pixel) rides high;
+under the zone max they tower and Wagga sinks below - which is why the
+`envelope` mode (whose bounds come from the min/max pixels, not a single
+aggregation) is the one that brackets Wagga like the reference. Those envelope
+bounds sit far above/below the zone lines because they come from single
+extreme cropping pixels; `make_extreme_pixel_map.py` (below) shows they are both
+in the mountainous corner of the "NSW Vic Slopes" zone (the Snowy Mountains /
+Australian Alps), terrain that is not really cropped. `--xmin`/`--xmax` set the
+annual plot's gust-speed axis (e.g. 10-30 to spread the zone lines out).
+
+Passing `--rain-zone-csv`/`--rain-point-csv` (the step-8 rainfall summary / two-
+point CSVs) restricts every line to that location's **root-lodging-risk days** -
+days when the soil is likely still wet: it rained at least `--rain-threshold`
+(10) mm, or on any of the previous `--rain-window-days` (3) days. Each location
+is masked by its own rainfall - a zone by its `--rain-stat` (default `mean`,
+matching the gust aggregation), Wagga by its two-point mean. Output names gain a
+`_rain10mm3d` tag. On the annual-probability plot the dry zones' curves start
+*below* 1.0 - that plateau is the fraction of years that had any risk day at all
+(some Aug-Dec seasons have none).
+
+`zone_lodging_risk_days.py` counts those risk days directly: for each zone and
+the Wagga points, the number of Aug-Dec days per year that are at risk (wet flag
+carried across the full record, so a late-July soaking still puts early-August
+days at risk). `--rain-stat` (default `mean`) matches the plots. It writes a
+year x location table and a per-location summary (mean/min/max risk-days per
+year), sorted driest to wettest - e.g. (zone mean rain) WA Northern ~10 days/yr,
+Qld Atherton ~37, Wagga ~28.
+
+`make_extreme_pixel_map.py` answers "where do the envelope Maximum/Minimum lines
+come from?". It reads BARRA2 (run on a compute node), computes the mean Aug-Dec
+seasonal-maximum gust for every cropping pixel, and marks the pixel most often
+the domain-wide daily maximum (drives Maximum-Australia) and daily minimum
+(drives Minimum-Australia) - both land in the alpine corner of NSW Vic Slopes,
+confirming the envelope is set by non-crop mountain terrain.
+
+```
+python zone_lodging_risk_days.py \
+    --rain-zone-csv /scratch/xe2/cb8590/wind-gusts2/rain_zone_medians_pr_197901-202601.csv \
+    --rain-point-csv /scratch/xe2/cb8590/wind-gusts2/rain_history_pr_197901-202601.csv
+```
+
 ## Outputs
 
 All scripts write to `/scratch/xe2/cb8590/wind-gusts2` by default

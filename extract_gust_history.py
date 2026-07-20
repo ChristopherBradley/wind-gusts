@@ -45,24 +45,24 @@ POINTS = [
 ]
 
 
-def extract_year(variable, year, start_month, end_month, points):
+def extract_year(variable, year, start_month, end_month, points, value_col):
     """Vectorized nearest-neighbour selection of all points at once, so each
     monthly file is only read once regardless of how many points there are."""
     lats = xr.DataArray([p["lat"] for p in points], dims="point", coords={"point": [p["name"] for p in points]})
     lons = xr.DataArray([p["lon"] for p in points], dims="point", coords={"point": [p["name"] for p in points]})
     da = open_variable(variable, year, start_month, year, end_month)
     pt = da.sel(lat=lats, lon=lons, method="nearest").compute()
-    return pt.to_dataframe(name="gust_m_s").reset_index()
+    return pt.to_dataframe(name=value_col).reset_index()
 
 
-def main(variable, start_year, start_month, end_year, end_month, out_dir, points):
+def main(variable, start_year, start_month, end_year, end_month, out_dir, points, out_prefix, value_col):
     frames = []
     t0 = time.time()
     for year in range(start_year, end_year + 1):
         m0 = start_month if year == start_year else 1
         m1 = end_month if year == end_year else 12
         t1 = time.time()
-        frames.append(extract_year(variable, year, m0, m1, points))
+        frames.append(extract_year(variable, year, m0, m1, points, value_col))
         print(f"{year} ({m0:02d}-{m1:02d}): {len(frames[-1])} point-days in {time.time() - t1:.1f}s", flush=True)
 
     out = pd.concat(frames, ignore_index=True)
@@ -71,24 +71,34 @@ def main(variable, start_year, start_month, end_year, end_month, out_dir, points
     requested = {p["name"]: (p["lat"], p["lon"]) for p in points}
     out["requested_lat"] = out["point"].map(lambda n: requested[n][0])
     out["requested_lon"] = out["point"].map(lambda n: requested[n][1])
-    out = out[["date", "point", "requested_lat", "requested_lon", "pixel_lat", "pixel_lon", "gust_m_s"]]
+    out = out[["date", "point", "requested_lat", "requested_lon", "pixel_lat", "pixel_lon", value_col]]
     out = out.sort_values(["point", "date"]).reset_index(drop=True)
 
     tag = f"{variable}_{start_year}{start_month:02d}-{end_year}{end_month:02d}"
-    csv_path = out_dir / f"gust_history_{tag}.csv"
+    csv_path = out_dir / f"{out_prefix}_{tag}.csv"
     out.to_csv(csv_path, index=False)
     print(f"\nWrote {csv_path} ({len(out)} rows) in {time.time() - t0:.1f}s total")
     return csv_path
 
 
 if __name__ == "__main__":
-    auto_start_y, auto_start_m, auto_end_y, auto_end_m = available_month_range("wsgsmax")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--variable", default="wsgsmax_bias", choices=list(VARIABLES))
-    parser.add_argument("--start-year", type=int, default=auto_start_y)
-    parser.add_argument("--start-month", type=int, default=auto_start_m)
-    parser.add_argument("--end-year", type=int, default=auto_end_y)
-    parser.add_argument("--end-month", type=int, default=auto_end_m)
+    # Year/month default to the full range on disk for the selected variable's
+    # source (resolved below, not baked in - pr and wsgsmax can differ).
+    parser.add_argument("--start-year", type=int, default=None)
+    parser.add_argument("--start-month", type=int, default=None)
+    parser.add_argument("--end-year", type=int, default=None)
+    parser.add_argument("--end-month", type=int, default=None)
+    parser.add_argument("--out-prefix", default="gust_history", help="Output CSV basename prefix (e.g. rain_history for pr)")
+    parser.add_argument("--value-col", default="gust_m_s", help="Name of the value column (e.g. rainfall_mm for pr)")
     parser.add_argument("--out-dir", default=str(OUT_DIR))
     args = parser.parse_args()
-    main(args.variable, args.start_year, args.start_month, args.end_year, args.end_month, Path(args.out_dir), POINTS)
+
+    src = VARIABLES[args.variable].get("source", args.variable)
+    auto_sy, auto_sm, auto_ey, auto_em = available_month_range(src)
+    sy = auto_sy if args.start_year is None else args.start_year
+    sm = auto_sm if args.start_month is None else args.start_month
+    ey = auto_ey if args.end_year is None else args.end_year
+    em = auto_em if args.end_month is None else args.end_month
+    main(args.variable, sy, sm, ey, em, Path(args.out_dir), POINTS, args.out_prefix, args.value_col)
